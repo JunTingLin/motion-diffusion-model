@@ -247,6 +247,8 @@ def add_edit_options(parser):
                        help="For in_between editing - Defines the end of input prefix (ratio from all frames).")
     group.add_argument("--suffix_start", default=0.75, type=float,
                        help="For in_between editing - Defines the start of input suffix (ratio from all frames).")
+    group.add_argument("--process_all", action='store_true',
+                       help="If true, process ALL motions in the test set instead of random sampling.")
 
 
 def add_evaluation_options(parser):

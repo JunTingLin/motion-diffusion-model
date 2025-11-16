@@ -38,18 +38,35 @@ def main():
             out_path += '_' + args.text_condition.replace(' ', '_').replace('.', '')
 
     print('Loading dataset...')
-    assert args.num_samples <= args.batch_size, \
-        f'Please either increase batch_size({args.batch_size}) or reduce num_samples({args.num_samples})'
-    # So why do we need this check? In order to protect GPU from a memory overload in the following line.
-    # If your GPU can handle batch size larger then default, you can specify it through --batch_size flag.
-    # If it doesn't, and you still want to sample more prompts, run this script with different seeds
-    # (specify through the --seed flag)
-    args.batch_size = args.num_samples  # Sampling a single batch from the testset, with exactly args.num_samples
-    data = get_dataset_loader(name=args.dataset,
-                              batch_size=args.batch_size,
-                              num_frames=max_frames,
-                              split='test',
-                              hml_mode='train')  # in train mode, you get both text and motion.
+
+    # If process_all is True, process all samples in the test set
+    if args.process_all:
+        print('Processing ALL samples in the test set...')
+        data = get_dataset_loader(name=args.dataset,
+                                  batch_size=1,  # Process one at a time
+                                  num_frames=max_frames,
+                                  split='test',
+                                  hml_mode='train')
+        args.num_samples = len(data.dataset)
+        args.batch_size = 1
+        # Get motion IDs in data loader's sorted order
+        motion_ids = data.dataset.t2m_dataset.name_list
+        print(f'Total samples to process: {args.num_samples}')
+        print(f'Motion IDs (sorted order): {motion_ids[:10]}...' if len(motion_ids) > 10 else f'Motion IDs: {motion_ids}')
+    else:
+        assert args.num_samples <= args.batch_size, \
+            f'Please either increase batch_size({args.batch_size}) or reduce num_samples({args.num_samples})'
+        # So why do we need this check? In order to protect GPU from a memory overload in the following line.
+        # If your GPU can handle batch size larger then default, you can specify it through --batch_size flag.
+        # If it doesn't, and you still want to sample more prompts, run this script with different seeds
+        # (specify through the --seed flag)
+        args.batch_size = args.num_samples  # Sampling a single batch from the testset, with exactly args.num_samples
+        data = get_dataset_loader(name=args.dataset,
+                                  batch_size=args.batch_size,
+                                  num_frames=max_frames,
+                                  split='test',
+                                  hml_mode='train')  # in train mode, you get both text and motion.
+        motion_ids = None  # Will get IDs during sampling
     # data.fixed_length = n_frames
     total_num_samples = args.num_samples * args.num_repetitions
 
@@ -63,70 +80,86 @@ def main():
     model.to(dist_util.dev())
     model.eval()  # disable random masking
 
-    iterator = iter(data)
-    input_motions, model_kwargs = next(iterator)
-    input_motions = input_motions.to(dist_util.dev())
-    texts = [args.text_condition] * args.num_samples
-    model_kwargs['y']['text'] = texts
-    if args.text_condition == '':
-        args.guidance_param = 0.  # Force unconditioned generation
-
-    # add inpainting mask according to args
-    assert max_frames == input_motions.shape[-1]
-    gt_frames_per_sample = {}
-    model_kwargs['y']['inpainted_motion'] = input_motions
-    if args.edit_mode == 'in_between':
-        model_kwargs['y']['inpainting_mask'] = torch.ones_like(input_motions, dtype=torch.bool,
-                                                               device=input_motions.device)  # True means use gt motion
-        for i, length in enumerate(model_kwargs['y']['lengths'].cpu().numpy()):
-            start_idx, end_idx = int(args.prefix_end * length), int(args.suffix_start * length)
-            gt_frames_per_sample[i] = list(range(0, start_idx)) + list(range(end_idx, max_frames))
-            model_kwargs['y']['inpainting_mask'][i, :, :,
-            start_idx: end_idx] = False  # do inpainting in those frames
-    elif args.edit_mode == 'upper_body':
-        model_kwargs['y']['inpainting_mask'] = torch.tensor(humanml_utils.HML_LOWER_BODY_MASK, dtype=torch.bool,
-                                                            device=input_motions.device)  # True is lower body data
-        model_kwargs['y']['inpainting_mask'] = model_kwargs['y']['inpainting_mask'].unsqueeze(0).unsqueeze(
-            -1).unsqueeze(-1).repeat(input_motions.shape[0], 1, input_motions.shape[2], input_motions.shape[3])
-
     all_motions = []
     all_lengths = []
     all_text = []
+    all_input_motions = []
+    all_gt_frames = []
+    all_motion_names = []
 
-    for rep_i in range(args.num_repetitions):
-        print(f'### Start sampling [repetitions #{rep_i}]')
+    # Process each sample in the dataset (in data loader's sorted order)
+    iterator = iter(data)
+    for sample_idx in range(args.num_samples):
+        if args.process_all:
+            motion_name = motion_ids[sample_idx]
+        else:
+            motion_name = f'sample_{sample_idx}'
 
-        # add CFG scale to batch
-        model_kwargs['y']['scale'] = torch.ones(args.batch_size, device=dist_util.dev()) * args.guidance_param
+        all_motion_names.append(motion_name)
+        print(f'\n### Processing sample {sample_idx + 1}/{args.num_samples} ({motion_name})')
 
-        sample_fn = diffusion.p_sample_loop
+        input_motions, model_kwargs = next(iterator)
+        input_motions = input_motions.to(dist_util.dev())
+        texts = [args.text_condition] * args.batch_size
+        model_kwargs['y']['text'] = texts
+        if args.text_condition == '':
+            args.guidance_param = 0.  # Force unconditioned generation
 
-        sample = sample_fn(
-            model,
-            (args.batch_size, model.njoints, model.nfeats, max_frames),
-            clip_denoised=False,
-            model_kwargs=model_kwargs,
-            skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
-            init_image=None,
-            progress=True,
-            dump_steps=None,
-            noise=None,
-            const_noise=False,
-        )
+        # add inpainting mask according to args
+        assert max_frames == input_motions.shape[-1]
+        gt_frames_per_sample = {}
+        model_kwargs['y']['inpainted_motion'] = input_motions
+        if args.edit_mode == 'in_between':
+            model_kwargs['y']['inpainting_mask'] = torch.ones_like(input_motions, dtype=torch.bool,
+                                                                   device=input_motions.device)  # True means use gt motion
+            for i, length in enumerate(model_kwargs['y']['lengths'].cpu().numpy()):
+                start_idx, end_idx = int(args.prefix_end * length), int(args.suffix_start * length)
+                gt_frames_per_sample[i] = list(range(0, start_idx)) + list(range(end_idx, max_frames))
+                model_kwargs['y']['inpainting_mask'][i, :, :,
+                start_idx: end_idx] = False  # do inpainting in those frames
+        elif args.edit_mode == 'upper_body':
+            model_kwargs['y']['inpainting_mask'] = torch.tensor(humanml_utils.HML_LOWER_BODY_MASK, dtype=torch.bool,
+                                                                device=input_motions.device)  # True is lower body data
+            model_kwargs['y']['inpainting_mask'] = model_kwargs['y']['inpainting_mask'].unsqueeze(0).unsqueeze(
+                -1).unsqueeze(-1).repeat(input_motions.shape[0], 1, input_motions.shape[2], input_motions.shape[3])
 
+        # Store input motion for visualization
+        all_input_motions.append(input_motions.cpu())
+        all_gt_frames.append(gt_frames_per_sample)
 
-        # Recover XYZ *positions* from HumanML3D vector representation
-        if model.data_rep == 'hml_vec':
-            n_joints = 22 if sample.shape[1] == 263 else 21
-            sample = data.dataset.t2m_dataset.inv_transform(sample.cpu().permute(0, 2, 3, 1)).float()
-            sample = recover_from_ric(sample, n_joints)
-            sample = sample.view(-1, *sample.shape[2:]).permute(0, 2, 3, 1)
+        for rep_i in range(args.num_repetitions):
+            print(f'  Repetition {rep_i + 1}/{args.num_repetitions}')
 
-        all_text += model_kwargs['y']['text']
-        all_motions.append(sample.cpu().numpy())
-        all_lengths.append(model_kwargs['y']['lengths'].cpu().numpy())
+            # add CFG scale to batch
+            model_kwargs['y']['scale'] = torch.ones(args.batch_size, device=dist_util.dev()) * args.guidance_param
 
-        print(f"created {len(all_motions) * args.batch_size} samples")
+            sample_fn = diffusion.p_sample_loop
+
+            sample = sample_fn(
+                model,
+                (args.batch_size, model.njoints, model.nfeats, max_frames),
+                clip_denoised=False,
+                model_kwargs=model_kwargs,
+                skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
+                init_image=None,
+                progress=True,
+                dump_steps=None,
+                noise=None,
+                const_noise=False,
+            )
+
+            # Recover XYZ *positions* from HumanML3D vector representation
+            if model.data_rep == 'hml_vec':
+                n_joints = 22 if sample.shape[1] == 263 else 21
+                sample = data.dataset.t2m_dataset.inv_transform(sample.cpu().permute(0, 2, 3, 1)).float()
+                sample = recover_from_ric(sample, n_joints)
+                sample = sample.view(-1, *sample.shape[2:]).permute(0, 2, 3, 1)
+
+            all_text += model_kwargs['y']['text']
+            all_motions.append(sample.cpu().numpy())
+            all_lengths.append(model_kwargs['y']['lengths'].cpu().numpy())
+
+        print(f"  Total samples created: {len(all_motions) * args.batch_size}")
 
 
     all_motions = np.concatenate(all_motions, axis=0)
@@ -142,7 +175,8 @@ def main():
     print(f"saving results file to [{npy_path}]")
     np.save(npy_path,
             {'motion': all_motions, 'text': all_text, 'lengths': all_lengths,
-             'num_samples': args.num_samples, 'num_repetitions': args.num_repetitions})
+             'num_samples': args.num_samples, 'num_repetitions': args.num_repetitions,
+             'motion_names': all_motion_names})
     with open(npy_path.replace('.npy', '.txt'), 'w') as fw:
         fw.write('\n'.join(all_text))
     with open(npy_path.replace('.npy', '_len.txt'), 'w') as fw:
@@ -151,12 +185,15 @@ def main():
     print(f"saving visualizations to [{out_path}]...")
     skeleton = paramUtil.kit_kinematic_chain if args.dataset == 'kit' else paramUtil.t2m_kinematic_chain
 
-    # Recover XYZ *positions* from HumanML3D vector representation
+    # Recover XYZ *positions* from HumanML3D vector representation for all input motions
     if model.data_rep == 'hml_vec':
-        input_motions = data.dataset.t2m_dataset.inv_transform(input_motions.cpu().permute(0, 2, 3, 1)).float()
-        input_motions = recover_from_ric(input_motions, n_joints)
-        input_motions = input_motions.view(-1, *input_motions.shape[2:]).permute(0, 2, 3, 1).cpu().numpy()
-
+        processed_input_motions = []
+        for input_motion in all_input_motions:
+            processed = data.dataset.t2m_dataset.inv_transform(input_motion.permute(0, 2, 3, 1)).float()
+            processed = recover_from_ric(processed, n_joints)
+            processed = processed.view(-1, *processed.shape[2:]).permute(0, 2, 3, 1).cpu().numpy()
+            processed_input_motions.append(processed[0])  # Take first item since batch_size=1
+        all_input_motions = processed_input_motions
 
     sample_print_template, row_print_template, all_print_template, \
     sample_file_template, row_file_template, all_file_template = construct_template_variables(args.unconstrained)
@@ -164,45 +201,60 @@ def main():
     num_vis_samples = min(args.num_samples, max_vis_samples)
     animations = np.empty(shape=(args.num_samples, args.num_repetitions), dtype=object)
     max_length = max(all_lengths)
-    
+
     for sample_i in range(args.num_samples):
-        caption = 'Input Motion'
-        length = model_kwargs['y']['lengths'][sample_i]
-        motion = input_motions[sample_i].transpose(2, 0, 1)[:length]
-        save_file = 'input_motion{:02d}.mp4'.format(sample_i)
-        animation_save_path = os.path.join(out_path, save_file)
-        rep_files = [animation_save_path]
-        # FIXME - fix and bring back the following:
-        # print(f'[({sample_i}) "{caption}" | -> {save_file}]')
-        # plot_3d_motion(animation_save_path, skeleton, motion, title=caption,
-        #                dataset=args.dataset, fps=fps, vis_mode='gt',
-        #                gt_frames=gt_frames_per_sample.get(sample_i, []))
+        motion_name = all_motion_names[sample_i]
+
+        # Generate input motion video (temporary)
+        caption_input = 'Input Motion'
+        length_input = all_lengths[sample_i * args.num_repetitions]
+        motion_input = all_input_motions[sample_i].transpose(2, 0, 1)[:length_input]
+        input_video_path = os.path.join(out_path, f'_temp_input_{sample_i}.mp4')
+        gt_frames_for_sample = all_gt_frames[sample_i].get(0, [])
+
+        ani_input = plot_3d_motion(input_video_path, skeleton, motion_input, title=caption_input,
+                                    dataset=args.dataset, fps=fps, vis_mode='gt',
+                                    gt_frames=gt_frames_for_sample)
+        ani_input = ani_input.set_duration(length_input / fps)
+        ani_input.write_videofile(input_video_path, fps=fps, codec='libx264', verbose=False, logger=None)
+
+        # Generate output motion videos (temporary, one per repetition)
+        rep_files = [input_video_path]
         for rep_i in range(args.num_repetitions):
-            caption = all_text[rep_i*args.batch_size + sample_i]
+            caption = all_text[sample_i * args.num_repetitions + rep_i]
             if caption == '':
                 caption = 'Edit [{}] unconditioned'.format(args.edit_mode)
             else:
                 caption = 'Edit [{}]: {}'.format(args.edit_mode, caption)
-            length = all_lengths[rep_i*args.batch_size + sample_i]
-            motion = all_motions[rep_i*args.batch_size + sample_i].transpose(2, 0, 1)[:length]
-            save_file = 'sample{:02d}_rep{:02d}.mp4'.format(sample_i, rep_i)
-            animation_save_path = os.path.join(out_path, save_file)
-            rep_files.append(animation_save_path)
-            gt_frames = gt_frames_per_sample.get(sample_i, [])
-            print(f'[({sample_i}) "{caption}" | Rep #{rep_i} | -> {save_file}]')
-            animations[sample_i, rep_i] = plot_3d_motion(animation_save_path, 
-                                                         skeleton, motion, dataset=args.dataset, title=caption, 
-                                                         fps=fps, gt_frames=gt_frames)
-            # Credit for visualization: https://github.com/EricGuo5513/text-to-motion
+            length = all_lengths[sample_i * args.num_repetitions + rep_i]
+            motion = all_motions[sample_i * args.num_repetitions + rep_i].transpose(2, 0, 1)[:length]
+            temp_output_path = os.path.join(out_path, f'_temp_output_{sample_i}_{rep_i}.mp4')
+            gt_frames = all_gt_frames[sample_i].get(0, [])
 
-        all_rep_save_file = os.path.join(out_path, 'sample{:02d}.mp4'.format(sample_i))
+            ani = plot_3d_motion(temp_output_path,
+                                 skeleton, motion, dataset=args.dataset, title=caption,
+                                 fps=fps, gt_frames=gt_frames)
+            ani = ani.set_duration(length / fps)
+            ani.write_videofile(temp_output_path, fps=fps, codec='libx264', verbose=False, logger=None)
+            animations[sample_i, rep_i] = ani
+            rep_files.append(temp_output_path)
+
+        # Combine into side-by-side video with naming: sample_MOTIONID.mp4
+        final_video_path = os.path.join(out_path, f'sample_{motion_name}.mp4')
         ffmpeg_rep_files = [f' -i {f} ' for f in rep_files]
         hstack_args = f' -filter_complex hstack=inputs={args.num_repetitions+1}'
-        ffmpeg_rep_cmd = f'ffmpeg -y -loglevel warning ' + ''.join(ffmpeg_rep_files) + f'{hstack_args} {all_rep_save_file}'
+        ffmpeg_rep_cmd = f'ffmpeg -y -loglevel warning ' + ''.join(ffmpeg_rep_files) + f'{hstack_args} {final_video_path}'
         os.system(ffmpeg_rep_cmd)
-        print(f'[({sample_i}) "{caption}" | all repetitions | -> {all_rep_save_file}]')
-    
-    save_multiple_samples(out_path, {'all': all_file_template}, animations, fps, max(list(all_lengths) + [n_frames]))
+        print(f'[{sample_i}] {motion_name} -> {final_video_path}')
+
+        # Clean up temporary files
+        for temp_file in rep_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        for rep_i in range(args.num_repetitions):
+            temp_output = os.path.join(out_path, f'_temp_output_{sample_i}_{rep_i}.mp4')
+            if os.path.exists(temp_output):
+                os.remove(temp_output)
 
     abs_path = os.path.abspath(out_path)
     print(f'[Done] Results are at [{abs_path}]')
