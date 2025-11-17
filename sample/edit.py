@@ -46,7 +46,9 @@ def main():
                                   batch_size=1,  # Process one at a time
                                   num_frames=max_frames,
                                   split='test',
-                                  hml_mode='train')
+                                  hml_mode='train',
+                                  fixed_len=max_frames,
+                                  data_dir=args.data_dir)
         args.num_samples = len(data.dataset)
         args.batch_size = 1
         # Get motion IDs in data loader's sorted order
@@ -65,7 +67,9 @@ def main():
                                   batch_size=args.batch_size,
                                   num_frames=max_frames,
                                   split='test',
-                                  hml_mode='train')  # in train mode, you get both text and motion.
+                                  hml_mode='train',
+                                  fixed_len=max_frames,
+                                  data_dir=args.data_dir)  # in train mode, you get both text and motion.
         motion_ids = None  # Will get IDs during sampling
     # data.fixed_length = n_frames
     total_num_samples = args.num_samples * args.num_repetitions

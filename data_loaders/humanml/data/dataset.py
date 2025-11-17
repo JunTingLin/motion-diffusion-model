@@ -27,6 +27,7 @@ class Text2MotionDataset(data.Dataset):
         self.max_length = 20
         self.pointer = 0
         min_motion_len = 40 if self.opt.dataset_name =='t2m' else 24
+        max_motion_len_cap = getattr(self.opt, 'max_allowed_motion_len', 200)
 
         joints_num = opt.joints_num
 
@@ -41,43 +42,65 @@ class Text2MotionDataset(data.Dataset):
         for name in tqdm(id_list):
             try:
                 motion = np.load(pjoin(opt.motion_dir, name + '.npy'))
-                if (len(motion)) < min_motion_len or (len(motion) >= 200):
+                if (len(motion)) < min_motion_len:
+                    continue
+                if max_motion_len_cap is not None and len(motion) >= max_motion_len_cap:
                     continue
                 text_data = []
                 flag = False
-                with cs.open(pjoin(opt.text_dir, name + '.txt')) as f:
-                    for line in f.readlines():
-                        text_dict = {}
-                        line_split = line.strip().split('#')
-                        caption = line_split[0]
-                        tokens = line_split[1].split(' ')
-                        f_tag = float(line_split[2])
-                        to_tag = float(line_split[3])
-                        f_tag = 0.0 if np.isnan(f_tag) else f_tag
-                        to_tag = 0.0 if np.isnan(to_tag) else to_tag
+                text_file = pjoin(opt.text_dir, name + '.txt')
+                if os.path.exists(text_file):
+                    with cs.open(text_file) as f:
+                        for line in f.readlines():
+                            text_dict = {}
+                            line_split = line.strip().split('#')
+                            caption = line_split[0]
+                            tokens = line_split[1].split(' ')
+                            f_tag = float(line_split[2])
+                            to_tag = float(line_split[3])
+                            f_tag = 0.0 if np.isnan(f_tag) else f_tag
+                            to_tag = 0.0 if np.isnan(to_tag) else to_tag
 
-                        text_dict['caption'] = caption
-                        text_dict['tokens'] = tokens
-                        if f_tag == 0.0 and to_tag == 0.0:
-                            flag = True
-                            text_data.append(text_dict)
-                        else:
-                            try:
-                                n_motion = motion[int(f_tag*20) : int(to_tag*20)]
-                                if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
-                                    continue
-                                new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                while new_name in data_dict:
+                            text_dict['caption'] = caption
+                            text_dict['tokens'] = tokens
+                            if f_tag == 0.0 and to_tag == 0.0:
+                                flag = True
+                                text_data.append(text_dict)
+                            else:
+                                try:
+                                    n_motion = motion[int(f_tag*20) : int(to_tag*20)]
+                                    if (len(n_motion)) < min_motion_len:
+                                        continue
+                                    if max_motion_len_cap is not None and len(n_motion) >= max_motion_len_cap:
+                                        continue
                                     new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                data_dict[new_name] = {'motion': n_motion,
-                                                       'length': len(n_motion),
-                                                       'text':[text_dict]}
-                                new_name_list.append(new_name)
-                                length_list.append(len(n_motion))
-                            except:
-                                print(line_split)
-                                print(line_split[2], line_split[3], f_tag, to_tag, name)
-                                # break
+                                    while new_name in data_dict:
+                                        new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
+                                    data_dict[new_name] = {'motion': n_motion,
+                                                           'length': len(n_motion),
+                                                           'text':[text_dict]}
+                                    new_name_list.append(new_name)
+                                    length_list.append(len(n_motion))
+                                except:
+                                    print(line_split)
+                                    print(line_split[2], line_split[3], f_tag, to_tag, name)
+                                    # break
+                    if not flag:
+                        text_data.append({
+                            'caption': f'motion {name}',
+                            'tokens': ['motion/OTHER']
+                        })
+                        flag = True
+                else:
+                    if not getattr(self.opt, 'missing_text_warning_printed', False):
+                        print(f'Warning: text annotations not found in [{opt.text_dir}]. '
+                              f'Using placeholder captions.')
+                        self.opt.missing_text_warning_printed = True
+                    text_data.append({
+                        'caption': f'motion {name}',
+                        'tokens': ['motion/OTHER']
+                    })
+                    flag = True
 
                 if flag:
                     data_dict[name] = {'motion': motion,
@@ -214,6 +237,7 @@ class Text2MotionDatasetV2(data.Dataset):
         self.pointer = 0
         self.max_motion_length = opt.max_motion_length
         min_motion_len = 40 if self.opt.dataset_name =='t2m' else 24
+        max_motion_len_cap = getattr(self.opt, 'max_allowed_motion_len', 200)
 
         data_dict = {}
         id_list = []
@@ -227,8 +251,9 @@ class Text2MotionDatasetV2(data.Dataset):
 
         _split = os.path.basename(split_file).replace('.txt', '')
         _name =''
+        cache_root = getattr(opt, 'dataset_cache_dir', opt.cache_dir)
         # cache_path = os.path.join(opt.meta_dir, self.opt.dataset_name + '_' + _split + _name + '.npy')
-        cache_path = os.path.join(opt.cache_dir, 'dataset', self.opt.dataset_name + '_' + _split + _name + '.npy')
+        cache_path = os.path.join(cache_root, 'dataset', self.opt.dataset_name + '_' + _split + _name + '.npy')
         if opt.use_cache and os.path.exists(cache_path):
             print(f'Loading motions from cache file [{cache_path}]...')
             _cache = np.load(cache_path, allow_pickle=True)[None][0]
@@ -239,54 +264,94 @@ class Text2MotionDatasetV2(data.Dataset):
             for name in tqdm(id_list):
                 try:
                     motion = np.load(pjoin(opt.motion_dir, name + '.npy'))
-                    if (len(motion)) < min_motion_len or (len(motion) >= 200):
+                    if (len(motion)) < min_motion_len:
+                        continue
+                    if max_motion_len_cap is not None and len(motion) >= max_motion_len_cap:
                         continue
                     text_data = []
-                    flag = False
-                    with cs.open(pjoin(opt.text_dir, name + '.txt')) as f:
-                        for line in f.readlines():
-                            text_dict = {}
-                            line_split = line.strip().split('#')
-                            caption = line_split[0]
-                            tokens = line_split[1].split(' ')
-                            f_tag = float(line_split[2])
-                            to_tag = float(line_split[3])
-                            f_tag = 0.0 if np.isnan(f_tag) else f_tag
-                            to_tag = 0.0 if np.isnan(to_tag) else to_tag
+                    text_file = pjoin(opt.text_dir, name + '.txt')
+                    if os.path.exists(text_file):
+                        with cs.open(text_file) as f:
+                            for line in f.readlines():
+                                text_dict = {}
+                                line_split = line.strip().split('#')
+                                caption = line_split[0]
+                                tokens = line_split[1].split(' ')
+                                f_tag = float(line_split[2])
+                                to_tag = float(line_split[3])
+                                f_tag = 0.0 if np.isnan(f_tag) else f_tag
+                                to_tag = 0.0 if np.isnan(to_tag) else to_tag
 
-                            text_dict['caption'] = caption
-                            text_dict['tokens'] = tokens
-                            if f_tag == 0.0 and to_tag == 0.0:
-                                flag = True
-                                text_data.append(text_dict)
-                            else:
-                                try:
-                                    n_motion = motion[int(f_tag*20) : int(to_tag*20)]
-                                    if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
-                                        continue
-                                    new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                    while new_name in data_dict:
+                                text_dict['caption'] = caption
+                                text_dict['tokens'] = tokens
+                                if f_tag == 0.0 and to_tag == 0.0:
+                                    text_data.append(text_dict)
+                                else:
+                                    try:
+                                        n_motion = motion[int(f_tag*20) : int(to_tag*20)]
+                                        if (len(n_motion)) < min_motion_len:
+                                            continue
+                                        if max_motion_len_cap is not None and len(n_motion) >= max_motion_len_cap:
+                                            continue
                                         new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
-                                    data_dict[new_name] = {'motion': n_motion,
-                                                           'length': len(n_motion),
-                                                           'text':[text_dict]}
-                                    new_name_list.append(new_name)
-                                    length_list.append(len(n_motion))
-                                except:
-                                    print(line_split)
-                                    print(line_split[2], line_split[3], f_tag, to_tag, name)
-                                    # break
+                                        while new_name in data_dict:
+                                            new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
+                                        data_dict[new_name] = {'motion': n_motion,
+                                                               'length': len(n_motion),
+                                                               'text':[text_dict]}
+                                        new_name_list.append(new_name)
+                                        length_list.append(len(n_motion))
+                                    except:
+                                        print(line_split)
+                                        print(line_split[2], line_split[3], f_tag, to_tag, name)
+                                        # break
+                        if not text_data:
+                            # file exists but no valid captions were found
+                            text_data.append({
+                                'caption': f'motion {name}',
+                                'tokens': ['motion/OTHER']
+                            })
+                    else:
+                        if not getattr(self.opt, 'missing_text_warning_printed', False):
+                            print(f'Warning: text annotations not found in [{opt.text_dir}]. '
+                                  f'Using placeholder captions.')
+                            self.opt.missing_text_warning_printed = True
+                        text_data.append({
+                            'caption': f'motion {name}',
+                            'tokens': ['motion/OTHER']
+                        })
 
-                    if flag:
-                        data_dict[name] = {'motion': motion,
-                                           'length': len(motion),
-                                           'text': text_data}
-                        new_name_list.append(name)
-                        length_list.append(len(motion))
+                    data_dict[name] = {'motion': motion,
+                                       'length': len(motion),
+                                       'text': text_data}
+                    new_name_list.append(name)
+                    length_list.append(len(motion))
                 except:
                     pass
 
+            if len(new_name_list) == 0:
+                print(f'Warning: no valid captions were found in [{opt.text_dir}]. Falling back to placeholder captions for all motions.')
+                for name in id_list:
+                    try:
+                        motion = np.load(pjoin(opt.motion_dir, name + '.npy'))
+                        if (len(motion)) < min_motion_len:
+                            continue
+                        if max_motion_len_cap is not None and len(motion) >= max_motion_len_cap:
+                            continue
+                        data_dict[name] = {'motion': motion,
+                                           'length': len(motion),
+                                           'text': [{'caption': f'motion {name}', 'tokens': ['motion/OTHER']}]}
+                        new_name_list.append(name)
+                        length_list.append(len(motion))
+                    except Exception as e:
+                        print(f'Fallback failed to load motion [{name}]: {e}')
+                        pass
+                print(f'Fallback added {len(new_name_list)} motions.')
+
             name_list, length_list = zip(*sorted(zip(new_name_list, length_list), key=lambda x: x[1]))
+            cache_dir = os.path.dirname(cache_path)
+            if cache_dir != '':
+                os.makedirs(cache_dir, exist_ok=True)
             print(f'Saving motions to cache file [{cache_path}]...')
             np.save(cache_path, {
                 'name_list': name_list,
@@ -422,7 +487,9 @@ class Text2MotionDatasetBaseline(data.Dataset):
                         else:
                             try:
                                 n_motion = motion[int(f_tag*20) : int(to_tag*20)]
-                                if (len(n_motion)) < min_motion_len or (len(n_motion) >= 200):
+                                if (len(n_motion)) < min_motion_len:
+                                    continue
+                                if max_motion_len_cap is not None and len(n_motion) >= max_motion_len_cap:
                                     continue
                                 new_name = random.choice('ABCDEFGHIJKLMNOPQRSTUVW') + '_' + name
                                 while new_name in data_dict:
@@ -763,7 +830,11 @@ class HumanML3D(data.Dataset):
         device = kwargs.get('device', None)
         opt = get_opt(dataset_opt_path, device)
         # opt.meta_dir = pjoin(abs_base_path, opt.meta_dir)
-        opt.cache_dir = kwargs.get('cache_path', '.')
+        opt.cache_dir = kwargs.get('cache_path') or '.'
+        custom_data_dir = kwargs.get('data_dir', '')
+        if custom_data_dir:
+            custom_data_dir = os.path.abspath(custom_data_dir)
+        opt.dataset_cache_dir = custom_data_dir if custom_data_dir else opt.cache_dir
         opt.motion_dir = pjoin(abs_base_path, opt.motion_dir)
         opt.text_dir = pjoin(abs_base_path, opt.text_dir)
         opt.model_dir = pjoin(abs_base_path, opt.model_dir)
@@ -771,6 +842,13 @@ class HumanML3D(data.Dataset):
         opt.data_root = pjoin(abs_base_path, opt.data_root)
         opt.save_root = pjoin(abs_base_path, opt.save_root)
         opt.meta_dir = pjoin(abs_base_path, './dataset')
+        if custom_data_dir:
+            opt.data_root = custom_data_dir
+            opt.motion_dir = pjoin(custom_data_dir, 'new_joint_vecs')
+            opt.text_dir = pjoin(custom_data_dir, 'texts')
+            opt.max_allowed_motion_len = None
+        else:
+            opt.max_allowed_motion_len = 200
         opt.use_cache = kwargs.get('use_cache', True)
         opt.fixed_len = kwargs.get('fixed_len', 0)
         if opt.fixed_len > 0:

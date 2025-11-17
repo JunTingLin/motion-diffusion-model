@@ -33,21 +33,21 @@ def get_collate_fn(name, hml_mode='train', pred_len=0, batch_size=1):
         return all_collate
 
 
-def get_dataset(name, num_frames, split='train', hml_mode='train', abs_path='.', fixed_len=0, 
-                device=None, autoregressive=False, cache_path=None): 
+def get_dataset(name, num_frames, split='train', hml_mode='train', abs_path='.', fixed_len=0,
+                device=None, autoregressive=False, cache_path=None, data_dir=''):
     DATA = get_dataset_class(name)
     if name in ["humanml", "kit"]:
-        dataset = DATA(split=split, num_frames=num_frames, mode=hml_mode, abs_path=abs_path, fixed_len=fixed_len, 
-                       device=device, autoregressive=autoregressive)
+        dataset = DATA(split=split, num_frames=num_frames, mode=hml_mode, abs_path=abs_path, fixed_len=fixed_len,
+                       device=device, autoregressive=autoregressive, cache_path=cache_path, data_dir=data_dir)
     else:
         dataset = DATA(split=split, num_frames=num_frames)
     return dataset
 
 
-def get_dataset_loader(name, batch_size, num_frames, split='train', hml_mode='train', fixed_len=0, pred_len=0, 
-                       device=None, autoregressive=False):
-    dataset = get_dataset(name, num_frames, split=split, hml_mode=hml_mode, fixed_len=fixed_len, 
-                device=device, autoregressive=autoregressive)
+def get_dataset_loader(name, batch_size, num_frames, split='train', hml_mode='train', fixed_len=0, pred_len=0,
+                       device=None, autoregressive=False, data_dir=''):
+    dataset = get_dataset(name, num_frames, split=split, hml_mode=hml_mode, fixed_len=fixed_len,
+                device=device, autoregressive=autoregressive, data_dir=data_dir)
     
     collate = get_collate_fn(name, hml_mode, pred_len, batch_size)
 

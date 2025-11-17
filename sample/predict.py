@@ -35,6 +35,7 @@ def get_args():
     args.guidance_param = 2.5
     args.unconstrained = False
     args.dataset = 'humanml'
+    args.data_dir = ''
 
     args.cond_mask_prob = 1
     args.emb_trans_dec = False
@@ -64,7 +65,8 @@ class Predictor(BasePredictor):
                                   batch_size=1,
                                   num_frames=196,
                                   split='test',
-                                  hml_mode='text_only')
+                                  hml_mode='text_only',
+                                  data_dir=self.args.data_dir)
 
         self.data.fixed_length = float(self.num_frames)
 
@@ -101,7 +103,8 @@ class Predictor(BasePredictor):
                                   batch_size=args.num_repetitions,
                                   num_frames=self.num_frames,
                                   split='test',
-                                  hml_mode='text_only')
+                                  hml_mode='text_only',
+                                  data_dir=self.args.data_dir)
 
         collate_args = [{'inp': torch.zeros(self.num_frames), 'tokens': None, 'lengths': self.num_frames, 'text': str(prompt)}]
         _, model_kwargs = collate(collate_args)

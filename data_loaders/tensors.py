@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 def lengths_to_mask(lengths, max_len):
     # max_len = max(lengths)
@@ -69,13 +70,25 @@ def t2m_collate(batch, target_batch_size):
     repeated_batch = batch * repeat_factor 
     full_batch = repeated_batch[:target_batch_size]  # Truncate to the target batch size
     # batch.sort(key=lambda x: x[3], reverse=True)
-    adapted_batch = [{
-        'inp': torch.tensor(b[4].T).float().unsqueeze(1), # [seqlen, J] -> [J, 1, seqlen]
-        'text': b[2], #b[0]['caption']
-        'tokens': b[6],
-        'lengths': b[5],
-        'key': b[7] if len(b) > 7 else None,
-    } for b in full_batch]
+    adapted_batch = []
+    for b in full_batch:
+        lengths = b[5]
+        orig_length = None
+        if isinstance(lengths, (tuple, list, np.ndarray)):
+            if len(lengths) == 2:
+                orig_length, lengths = lengths
+            elif len(lengths) > 0:
+                lengths = lengths[-1]
+        adapted = {
+            'inp': torch.tensor(b[4].T).float().unsqueeze(1), # [seqlen, J] -> [J, 1, seqlen]
+            'text': b[2],
+            'tokens': b[6],
+            'lengths': lengths,
+            'key': b[7] if len(b) > 7 else None,
+        }
+        if orig_length is not None:
+            adapted['orig_lengths'] = orig_length
+        adapted_batch.append(adapted)
     return collate(adapted_batch)
 
 

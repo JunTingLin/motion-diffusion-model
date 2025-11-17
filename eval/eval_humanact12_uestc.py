@@ -62,7 +62,8 @@ def main():
         args.num_samples = 1000
         args.num_seeds = 20
 
-    data_loader = get_dataset_loader(name=args.dataset, num_frames=60, batch_size=args.batch_size,)
+    data_loader = get_dataset_loader(name=args.dataset, num_frames=60, batch_size=args.batch_size,
+                                     data_dir=args.data_dir)
 
     print("creating model and diffusion...")
     model, diffusion = create_model_and_diffusion(args, data_loader)

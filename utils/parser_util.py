@@ -11,20 +11,36 @@ def parse_and_load_from_model(parser):
     add_model_options(parser)
     add_diffusion_options(parser)
     args = parser.parse_args()
+    user_defined_args = get_user_defined_args(parser, args)
     args_to_overwrite = []
     for group_name in ['dataset', 'model', 'diffusion']:
         args_to_overwrite += get_args_per_group_name(parser, args, group_name)
 
     # load args from model
     if args.model_path != '':  # if not using external results file
-        args = load_args_from_model(args, args_to_overwrite)
+        args = load_args_from_model(args, args_to_overwrite, user_defined_args)
 
     if args.cond_mask_prob == 0:
         args.guidance_param = 1
     
     return apply_rules(args)
 
-def load_args_from_model(args, args_to_overwrite):
+def get_user_defined_args(parser, args):
+    user_defined = set()
+    for action in parser._actions:
+        dest = getattr(action, 'dest', None)
+        if not dest or dest == 'help':
+            continue
+        if not hasattr(args, dest):
+            continue
+        default_val = action.default
+        if getattr(args, dest) != default_val:
+            user_defined.add(dest)
+    return user_defined
+
+def load_args_from_model(args, args_to_overwrite, user_defined_args=None):
+    if user_defined_args is None:
+        user_defined_args = set()
     model_path = get_model_path_from_args()
     args_path = os.path.join(os.path.dirname(model_path), 'args.json')
     assert os.path.exists(args_path), 'Arguments json file was not found!'
@@ -32,6 +48,8 @@ def load_args_from_model(args, args_to_overwrite):
         model_args = json.load(fr)
 
     for a in args_to_overwrite:
+        if a in user_defined_args:
+            continue
         if a in model_args.keys():
             setattr(args, a, model_args[a])
 
