@@ -39,6 +39,10 @@ from data_loaders.humanml.utils.paramUtil import (
 from data_loaders.humanml.common.skeleton import Skeleton
 import torch as torch_humanml
 
+# FPS constants
+AIST_FPS = 60  # AIST++ is recorded at 60 FPS
+HUMANML_FPS = 20  # HumanML3D uses 20 FPS
+
 
 def load_smpl_model(model_path):
     """Load SMPL model for forward kinematics."""
@@ -55,21 +59,34 @@ def load_smpl_model(model_path):
         sys.exit(1)
 
 
-def smpl_to_joints(smpl_model, smpl_poses, smpl_trans, smpl_scaling):
+def smpl_to_joints(smpl_model, smpl_poses, smpl_trans, smpl_scaling, target_fps=20, source_fps=60):
     """
     Convert SMPL parameters to joint positions.
 
     Args:
         smpl_model: SMPL model instance
-        smpl_poses: (N, 72) SMPL pose parameters
-        smpl_trans: (N, 3) root translation
+        smpl_poses: (N, 72) SMPL pose parameters at source_fps
+        smpl_trans: (N, 3) root translation at source_fps
         smpl_scaling: (1,) scaling factor
+        target_fps: Target FPS for output (default: 20 for HumanML3D)
+        source_fps: Source FPS of AIST++ data (default: 60)
 
     Returns:
-        joints: (N, 22, 3) joint positions in HumanML3D format
+        joints: (M, 22, 3) joint positions in HumanML3D format at target_fps
+                where M = N * (target_fps / source_fps)
     """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     smpl_model = smpl_model.to(device)
+
+    # Downsample from source_fps to target_fps
+    # AIST++ is 60 FPS, HumanML3D is 20 FPS, so we keep every 3rd frame
+    fps_ratio = source_fps / target_fps
+    assert fps_ratio == int(fps_ratio), f"FPS ratio must be integer, got {fps_ratio}"
+    downsample_step = int(fps_ratio)
+
+    # Downsample the SMPL parameters
+    smpl_poses = smpl_poses[::downsample_step]  # Keep every Nth frame
+    smpl_trans = smpl_trans[::downsample_step]
 
     n_frames = smpl_poses.shape[0]
     all_joints = []
@@ -132,12 +149,24 @@ def convert_aist_motion(aist_pkl_path, smpl_model, output_dir, motion_name, tgt_
         with open(aist_pkl_path, 'rb') as f:
             motion_data = pickle.load(f)
 
-        smpl_poses = motion_data['smpl_poses']    # (N, 72)
-        smpl_trans = motion_data['smpl_trans']    # (N, 3)
+        smpl_poses = motion_data['smpl_poses']    # (N, 72) at 60 FPS
+        smpl_trans = motion_data['smpl_trans']    # (N, 3) at 60 FPS
         smpl_scaling = motion_data['smpl_scaling'] # (1,)
 
-        # Convert SMPL to joint positions
-        joints = smpl_to_joints(smpl_model, smpl_poses, smpl_trans, smpl_scaling)
+        n_frames_60fps = smpl_poses.shape[0]
+        duration_sec = n_frames_60fps / AIST_FPS
+
+        # Convert SMPL to joint positions with FPS downsampling
+        joints = smpl_to_joints(
+            smpl_model, smpl_poses, smpl_trans, smpl_scaling,
+            target_fps=HUMANML_FPS, source_fps=AIST_FPS
+        )
+
+        n_frames_20fps = joints.shape[0]
+        # Verify downsampling (allow ±1 frame tolerance for rounding)
+        expected_frames = int(n_frames_60fps * HUMANML_FPS / AIST_FPS)
+        assert abs(n_frames_20fps - expected_frames) <= 1, \
+            f"Frame count mismatch: got {n_frames_20fps}, expected ~{expected_frames} (±1)"
 
         # Extract HumanML3D features (263-dim)
         # feet_thre: threshold for foot contact detection

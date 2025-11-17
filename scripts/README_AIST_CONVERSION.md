@@ -4,6 +4,14 @@
 
 `convert_aist_to_humanml.py` 現在可以完整轉換 AIST++ 數據到 HumanML3D 格式。
 
+### 🔧 最新修復（2025-11-17）
+
+1. **FPS Downsampling**: 正確將 60 FPS 降採樣至 20 FPS（每 3 幀取 1 幀）
+2. **Unit Conversion**: 修正單位轉換順序（在 SMPL forward 之前將 cm 轉為 m）
+3. **Frame Validation**: 允許 ±1 幀容差，避免四捨五入誤判
+
+**重要：** 如果之前已轉換過資料，請重新執行轉換以套用這些修正！
+
 ---
 
 ## 快速開始
@@ -296,25 +304,94 @@ joints_22 = joints_24[:, :22, :]  # 目前取前 22 個關節
 ```
 AIST++ SMPL (.pkl)
     ↓
-  smpl_poses (N, 72)
-  smpl_trans (N, 3)
+  smpl_poses (N, 72) @ 60 FPS
+  smpl_trans (N, 3) @ 60 FPS (單位：厘米)
   smpl_scaling (1,)
     ↓
-[SMPL Forward Kinematics]
+[FPS Downsampling: 60 FPS → 20 FPS]
+  - 每 3 幀取 1 幀 (60/20 = 3)
+  - smpl_poses: (N, 72) → (M, 72) where M = N/3
+  - smpl_trans: (N, 3) → (M, 3) where M = N/3
     ↓
-  joints_24 (N, 24, 3)
+[Unit Conversion: cm → meters]
+  - smpl_trans = smpl_trans / smpl_scaling
+  - 將厘米轉換為公尺（SMPL 需要公尺單位）
+    ↓
+[SMPL Forward Kinematics]
+  - 輸入：poses (M, 72), trans (M, 3) in meters
+  - 輸出：joints_24 (M, 24, 3) in meters
     ↓
 [取前 22 個關節]
     ↓
-  joints_22 (N, 22, 3)
+  joints_22 (M, 22, 3) @ 20 FPS
     ↓
 [extract_features]
   - 計算旋轉（IK）
   - 計算速度
   - 檢測腳部接觸
     ↓
-  HumanML3D features (N-1, 263)
+  HumanML3D features (M-1, 263) @ 20 FPS
 ```
+
+### 重要修正說明
+
+#### 1. FPS Downsampling（2025-11-17 修復）
+
+**問題：**
+- AIST++ 原始資料是 60 FPS
+- HumanML3D 使用 20 FPS
+- 之前的轉換保留了所有 60 FPS 的幀，導致播放速度慢 3 倍
+
+**解決方案：**
+- 在 SMPL forward pass 之前進行降採樣
+- 每 3 幀取 1 幀（60/20 = 3）
+- 實現位置：`smpl_to_joints()` 函數，第 81-89 行
+
+**範例：**
+```python
+# 720 frames @ 60 FPS → 240 frames @ 20 FPS
+# Duration: 12.0 seconds (保持不變)
+downsample_step = int(60 / 20)  # = 3
+smpl_poses = smpl_poses[::downsample_step]
+smpl_trans = smpl_trans[::downsample_step]
+```
+
+#### 2. Unit Conversion（2025-11-17 修復）
+
+**問題：**
+- AIST++ 的 `smpl_trans` 使用厘米單位（~169 cm）
+- `smpl_scaling` 是縮放因子（~92-93）
+- SMPL 模型需要公尺單位
+- 之前在 SMPL 輸出後才轉換，導致骨架位置錯誤（Y 軸在 15,000 而非 0-2 米）
+
+**解決方案：**
+- 在 SMPL forward pass **之前**轉換單位
+- `smpl_trans = smpl_trans / smpl_scaling`
+- 實現位置：`smpl_to_joints()` 函數，第 101-105 行
+
+**關鍵代碼：**
+```python
+# CRITICAL: 必須在 SMPL forward 之前轉換！
+batch_trans = batch_trans / float(smpl_scaling)  # cm → m
+output = smpl_model(
+    body_pose=batch_poses[:, 3:],
+    global_orient=batch_poses[:, :3],
+    transl=batch_trans,  # 已經是公尺單位
+    return_verts=False
+)
+```
+
+#### 3. Frame Count Validation（2025-11-17 修復）
+
+**問題：**
+- 當原始幀數不能被 3 整除時，會產生 ±1 的四捨五入差異
+- 例如：640 frames → 640/3 = 213.33 → 實際 214 frames
+- 嚴格的 `==` 驗證導致 693/1408 (49%) 轉換報錯
+
+**解決方案：**
+- 允許 ±1 幀的容差
+- `abs(n_frames_20fps - expected_frames) <= 1`
+- 實現位置：`convert_aist_motion()` 函數，第 168 行
 
 ### 關鍵函數
 
