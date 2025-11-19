@@ -47,7 +47,6 @@ def main():
                                   num_frames=max_frames,
                                   split='test',
                                   hml_mode='train',
-                                  fixed_len=max_frames,
                                   data_dir=args.data_dir)
         args.num_samples = len(data.dataset)
         args.batch_size = 1
@@ -68,7 +67,6 @@ def main():
                                   num_frames=max_frames,
                                   split='test',
                                   hml_mode='train',
-                                  fixed_len=max_frames,
                                   data_dir=args.data_dir)  # in train mode, you get both text and motion.
         motion_ids = None  # Will get IDs during sampling
     # data.fixed_length = n_frames
