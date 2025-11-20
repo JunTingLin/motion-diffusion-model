@@ -146,6 +146,7 @@ conda activate mdm
 python -m spacy download en_core_web_sm
 pip install git+https://github.com/openai/CLIP.git
 pip install 'transformers<4.30' 'tokenizers<0.13'
+pip install blobfile
 ```
 
 Download dependencies:
