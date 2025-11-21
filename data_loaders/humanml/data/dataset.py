@@ -416,7 +416,10 @@ class Text2MotionDatasetV2(data.Dataset):
             m_length = (m_length // self.opt.unit_length - 1) * self.opt.unit_length
         elif coin2 == 'single':
             m_length = (m_length // self.opt.unit_length) * self.opt.unit_length
-        
+
+        # AIST++ fix: Ensure m_length doesn't exceed max_motion_length
+        m_length = min(m_length, self.max_motion_length)
+
         original_length = None
         if self.opt.fixed_len > 0:
             # Crop fixed_len

@@ -258,7 +258,7 @@ class TrainLoop:
         if self.eval_wrapper is not None:
             print('Running evaluation loop: [Should take about 90 min]')
             log_file = os.path.join(self.save_dir, f'eval_humanml_{(self.total_step()):09d}.log')
-            diversity_times = 300
+            diversity_times = 100  # Reduced from 300 for AIST++ (140 val samples)
             mm_num_times = 0  # mm is super slow hence we won't run it during training
             eval_dict = eval_humanml.evaluation(
                 self.eval_wrapper, self.eval_gt_data, self.eval_data, log_file,

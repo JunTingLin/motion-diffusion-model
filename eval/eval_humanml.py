@@ -265,7 +265,7 @@ if __name__ == '__main__':
         mm_num_samples = 0
         mm_num_repeats = 0
         mm_num_times = 0
-        diversity_times = 300
+        diversity_times = 100  # Reduced from 300 for AIST++ (140 val samples)
         replication_times = 5  # about 3 Hrs
     elif args.eval_mode == 'wo_mm':
         num_samples_limit = 1000
@@ -273,7 +273,7 @@ if __name__ == '__main__':
         mm_num_samples = 0
         mm_num_repeats = 0
         mm_num_times = 0
-        diversity_times = 300
+        diversity_times = 100  # Reduced from 300 for AIST++ (140 val samples)
         replication_times = 20 # about 12 Hrs
     elif args.eval_mode == 'mm_short':
         num_samples_limit = 1000
