@@ -630,7 +630,7 @@ class GaussianDiffusion:
         if dump_steps is not None:
             dump = []
 
-        if 'text' in model_kwargs['y'].keys():
+        if 'text' in model_kwargs['y'].keys() and hasattr(model, 'encode_text'):
             # encoding once instead of each iteration saves lots of time
             model_kwargs['y']['text_embed'] = model.encode_text(model_kwargs['y']['text'])
         
