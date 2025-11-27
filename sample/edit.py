@@ -50,10 +50,19 @@ def main():
                                   data_dir=args.data_dir)
         args.num_samples = len(data.dataset)
         args.batch_size = 1
-        # Get motion IDs in data loader's sorted order
-        motion_ids = data.dataset.t2m_dataset.name_list
+        # Get motion IDs - dataset is sorted by length, not test.txt order!
+        # Due to DataLoader shuffle=True, we must collect both IDs and data in one pass
+        motion_ids = []
+        cached_data = []
+        temp_iterator = iter(data)
+        for _ in range(args.num_samples):
+            input_motions_temp, model_kwargs_temp = next(temp_iterator)
+            # Extract motion name from db_key field
+            motion_id = model_kwargs_temp['y']['db_key'][0] if 'db_key' in model_kwargs_temp['y'] and model_kwargs_temp['y']['db_key'][0] is not None else f'sample_{_}'
+            motion_ids.append(motion_id)
+            cached_data.append((input_motions_temp, model_kwargs_temp))
         print(f'Total samples to process: {args.num_samples}')
-        print(f'Motion IDs (sorted order): {motion_ids[:10]}...' if len(motion_ids) > 10 else f'Motion IDs: {motion_ids}')
+        print(f'Motion IDs: {motion_ids}')
     else:
         assert args.num_samples <= args.batch_size, \
             f'Please either increase batch_size({args.batch_size}) or reduce num_samples({args.num_samples})'
@@ -69,6 +78,7 @@ def main():
                                   hml_mode='train',
                                   data_dir=args.data_dir)  # in train mode, you get both text and motion.
         motion_ids = None  # Will get IDs during sampling
+        cached_data = None  # No cached data for non-process_all mode
     # data.fixed_length = n_frames
     total_num_samples = args.num_samples * args.num_repetitions
 
@@ -78,7 +88,9 @@ def main():
     print(f"Loading checkpoints from [{args.model_path}]...")
     load_saved_model(model, args.model_path, use_avg=args.use_ema)
 
-    model = ClassifierFreeSampleModel(model)   # wrapping model with the classifier-free sampler
+    # Only use ClassifierFreeSampleModel for conditional models
+    if args.guidance_param != 1 and model.cond_mode != 'no_cond':
+        model = ClassifierFreeSampleModel(model)   # wrapping model with the classifier-free sampler
     model.to(dist_util.dev())
     model.eval()  # disable random masking
 
@@ -90,7 +102,13 @@ def main():
     all_motion_names = []
 
     # Process each sample in the dataset (in data loader's sorted order)
-    iterator = iter(data)
+    if cached_data is not None:
+        # Use cached data (process_all mode with shuffle=True)
+        data_source = cached_data
+    else:
+        # Use iterator (non-process_all mode)
+        data_source = iter(data)
+
     for sample_idx in range(args.num_samples):
         if args.process_all:
             motion_name = motion_ids[sample_idx]
@@ -100,7 +118,10 @@ def main():
         all_motion_names.append(motion_name)
         print(f'\n### Processing sample {sample_idx + 1}/{args.num_samples} ({motion_name})')
 
-        input_motions, model_kwargs = next(iterator)
+        if cached_data is not None:
+            input_motions, model_kwargs = data_source[sample_idx]
+        else:
+            input_motions, model_kwargs = next(data_source)
         input_motions = input_motions.to(dist_util.dev())
         texts = [args.text_condition] * args.batch_size
         model_kwargs['y']['text'] = texts

@@ -443,7 +443,7 @@ class Text2MotionDatasetV2(data.Dataset):
 
         length = (original_length, m_length) if self.opt.fixed_len > 0 else m_length
 
-        return word_embeddings, pos_one_hots, caption, sent_len, motion, length, '_'.join(tokens)
+        return word_embeddings, pos_one_hots, caption, sent_len, motion, length, '_'.join(tokens), key
 
 
 '''For use of training baseline'''
@@ -888,7 +888,7 @@ class HumanML3D(data.Dataset):
         self.mean_gpu = torch.tensor(self.mean).to(device)[None, :, None, None]
         self.std_gpu = torch.tensor(self.std).to(device)[None, :, None, None]
 
-        assert len(self.t2m_dataset) > 1, 'You loaded an empty dataset, ' \
+        assert len(self.t2m_dataset) > 0, 'You loaded an empty dataset, ' \
                                           'it is probably because your data dir has only texts and no motions.\n' \
                                           'To train and evaluate MDM you should get the FULL data as described ' \
                                           'in the README file.'
