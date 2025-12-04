@@ -40,7 +40,7 @@ SITUATION_MAP = {
     'FM': 'advanced',   # Advanced Dance
     'MM': '',           # Moving Camera (not relevant for text)
     'GR': 'group',      # Group Dance
-    'SH': 'showcase',   # Showcase
+    'SH': 'showcaseP',   # Showcase
     'CY': 'cypher',     # Cypher
     'BT': 'battle',     # Battle
 }
