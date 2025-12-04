@@ -39,15 +39,10 @@ pip install blobfile smplx matplotlib moviepy==1.0.3 imageio imageio-ffmpeg spac
 下載相依檔案：
 
 ```bash
+bash prepare/download_smpl_files.sh
 bash prepare/download_glove.sh
 bash prepare/download_t2m_evaluators.sh
 ```
-
-| 檔案 | 用途 |
-|-----|------|
-| `glove/` | 文字轉 word embedding（評估用）|
-| `t2m/` | Text-Motion Matching 評估模型 |
-
 
 ---
 
@@ -56,7 +51,7 @@ bash prepare/download_t2m_evaluators.sh
 ### 2-1. 下載已轉換好的 HumanML3D AIST++ dataset（推薦）
 
 ```bash
-gdown 1jGRaMjh6v2AMyOA8OYHxQmzVm0DC27q1
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1jGRaMjh6v2AMyOA8OYHxQmzVm0DC27q1" -O AIST++.zip
 unzip AIST++.zip -d dataset/
 rm AIST++.zip
 ```
@@ -118,8 +113,9 @@ python scripts/visualize_motion.py \
 下載在 AIST++ 上訓練 50k steps 的模型（Unconditional）：
 
 ```bash
-mkdir -p save/aist_mdm_50steps
-gdown 1zShG6zYDIy1gcAdOtECsnMOpVunArWdK -O save/aist_mdm_50steps/model000050000.pt
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1MY5tW0LbF2LJIgEWGxYu4uML2Ef-fub4" -O aist_mdm_50steps.zip
+unzip aist_mdm_50steps.zip -d save/
+rm aist_mdm_50steps.zip
 ```
 
 | 模型資訊 | |

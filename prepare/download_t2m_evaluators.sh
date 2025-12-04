@@ -1,8 +1,13 @@
 echo -e "Downloading T2M evaluators"
-# gdown --fuzzy https://drive.google.com/file/d/1DSaKqWX2HlwBtVH5l7DdW96jeYUIXsOP/view
-# gdown --fuzzy https://drive.google.com/file/d/1tX79xk0fflp07EZ660Xz1RAFE33iEyJR/view
-gdown --fuzzy https://drive.google.com/file/d/1O_GUHgjDbl2tgbyfSwZOUYXDACnk25Kb/view
-gdown --fuzzy https://drive.google.com/file/d/12liZW5iyvoybXD8eOw4VanTgsMtynCuU/view
+
+# Download t2m.zip (with confirm=pbef to bypass virus scan warning)
+echo "Downloading t2m.zip..."
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1O_GUHgjDbl2tgbyfSwZOUYXDACnk25Kb" -O t2m.zip
+
+# Download kit.zip
+echo "Downloading kit.zip..."
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=12liZW5iyvoybXD8eOw4VanTgsMtynCuU" -O kit.zip
+
 rm -rf t2m
 rm -rf kit
 
