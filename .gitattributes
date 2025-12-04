@@ -1,0 +1,12 @@
+# Make sure shell scripts always use LF line breaks
+*.sh text eol=lf
+
+# Make sure Python files use LF
+*.py text eol=lf
+
+# Ensure other text files are processed automatically
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
