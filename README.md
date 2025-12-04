@@ -212,6 +212,10 @@ python -m eval.eval_humanml \
 | `wo_mm` | 不含 MultiModality (20 replications) |
 | `mm_short` | 含 MultiModality (5 replications) |
 
+> **⚠️ 評估指標說明**
+>
+> 目前的評估使用 HumanML3D 預訓練的 evaluator（`t2m/`）
+
 ---
 
 ### 4-4. Train
