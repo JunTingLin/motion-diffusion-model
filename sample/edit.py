@@ -47,7 +47,8 @@ def main():
                                   num_frames=max_frames,
                                   split='test',
                                   hml_mode='train',
-                                  data_dir=args.data_dir)
+                                  data_dir=args.data_dir,
+                                  disable_offset_aug=True)  # Always start from the beginning
         args.num_samples = len(data.dataset)
         args.batch_size = 1
         # Get motion IDs - dataset is sorted by length, not test.txt order!
@@ -76,7 +77,8 @@ def main():
                                   num_frames=max_frames,
                                   split='test',
                                   hml_mode='train',
-                                  data_dir=args.data_dir)  # in train mode, you get both text and motion.
+                                  data_dir=args.data_dir,
+                                  disable_offset_aug=True)  # Always start from the beginning
         motion_ids = None  # Will get IDs during sampling
         cached_data = None  # No cached data for non-process_all mode
     # data.fixed_length = n_frames

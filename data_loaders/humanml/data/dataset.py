@@ -428,7 +428,7 @@ class Text2MotionDatasetV2(data.Dataset):
         
         idx = random.randint(0, len(motion) - m_length)
         if self.opt.disable_offset_aug:
-            idx = random.randint(0, self.opt.unit_length)
+            idx = 0  # Always start from the beginning
         motion = motion[idx:idx+m_length]
 
         "Z Normalization"
@@ -858,7 +858,7 @@ class HumanML3D(data.Dataset):
         if opt.fixed_len > 0:
             opt.max_motion_length = opt.fixed_len
         is_autoregressive = kwargs.get('autoregressive', False)
-        opt.disable_offset_aug = is_autoregressive and (opt.fixed_len > 0) and (mode == 'eval')  # for autoregressive evaluation, use the start of the motion and not something from the middle
+        opt.disable_offset_aug = kwargs.get('disable_offset_aug', False) or (is_autoregressive and (opt.fixed_len > 0) and (mode == 'eval'))  # for autoregressive evaluation, use the start of the motion and not something from the middle
         self.opt = opt
         print('Loading dataset %s ...' % opt.dataset_name)
 
