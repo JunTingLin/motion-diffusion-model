@@ -110,17 +110,21 @@ python scripts/visualize_motion.py \
 
 ## 3. 取得預訓練模型
 
-下載在 AIST++ 上訓練 50k steps 的模型（Unconditional）：
+下載在 AIST++ 上訓練 50k/70k steps 的模型（Unconditional）：
 
 ```bash
-gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1MY5tW0LbF2LJIgEWGxYu4uML2Ef-fub4" -O aist_mdm_50steps.zip
-unzip aist_mdm_50steps.zip -d save/
-rm aist_mdm_50steps.zip
+# 50k steps
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1MY5tW0LbF2LJIgEWGxYu4uML2Ef-fub4" -O aist_mdm_50ksteps.zip
+# 70k steps
+gdown "https://drive.google.com/uc?export=download&confirm=pbef&id=1pWSHj0IIbVRWbuDHhN4HJ4VxSIxhCduc" -O aist_mdm_70ksteps.zip
+# unzip the file you download
+unzip aist_mdm_70ksteps.zip -d save/
+rm aist_mdm_70ksteps.zip
 ```
 
 | 模型資訊 | |
 |---------|---|
-| 訓練步數 | 50,000 steps |
+| 訓練步數 | 50k/70k steps |
 | Diffusion steps | 50 |
 | 訓練模式 | Unconditional |
 | 資料集 | AIST++ (1,408 samples) |
@@ -208,6 +212,14 @@ python -m eval.eval_humanml \
     --eval_mode wo_mm \
     --guidance_param 1.0 \
     --data_dir ./dataset/AIST++ \
+    --seed 42
+```
+或執行修改自 Unimumo 的評估：
+```bash
+python -m eval.eval_unimumo \ 
+    --model_path save/aist_mdm_50steps/model000070000.pt \
+    --guidance_param 1.0 \
+    --data_dir ./dataset/AIST++  \
     --seed 42
 ```
 
