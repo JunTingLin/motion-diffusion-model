@@ -51,10 +51,17 @@ def get_dataset_loader(name, batch_size, num_frames, split='train', hml_mode='tr
                 device=device, autoregressive=autoregressive, data_dir=data_dir, disable_offset_aug=disable_offset_aug)
     
     collate = get_collate_fn(name, hml_mode, pred_len, batch_size)
-
+    '''
     loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True,
         num_workers=8, drop_last=True, collate_fn=collate
+    )
+    '''
+    should_drop_last = (hml_mode == 'train')
+
+    loader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=True,
+        num_workers=8, drop_last=should_drop_last, collate_fn=collate
     )
 
     return loader

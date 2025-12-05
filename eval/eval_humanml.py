@@ -289,8 +289,16 @@ if __name__ == '__main__':
         mm_num_samples = 100
         mm_num_repeats = 30
         mm_num_times = 10
-        diversity_times = 300
+        diversity_times = 100  # Reduced from 300 for AIST++ (140 val samples)
         replication_times = 5  # about 15 Hrs
+    elif args.eval_mode == 'full':
+        num_samples_limit = 1000
+        run_mm = True
+        mm_num_samples = 100
+        mm_num_repeats = 30
+        mm_num_times = 10
+        diversity_times = 100  # Reduced from 300 for AIST++ (140 val samples)
+        replication_times = 20
     else:
         raise ValueError()
 
@@ -307,6 +315,20 @@ if __name__ == '__main__':
     gen_loader = get_dataset_loader(name=args.dataset, batch_size=args.batch_size, num_frames=None, split=split, hml_mode='eval',
                                     fixed_len=args.context_len+args.pred_len, pred_len=args.pred_len, device=dist_util.dev(),
                                     autoregressive=args.autoregressive, data_dir=args.data_dir)
+
+    dataset_len = len(gen_loader.dataset)
+    print(f"Dataset length: {dataset_len}")
+    # 1. 修正 mm_num_samples (必須小於 dataset_len)
+    if run_mm and mm_num_samples >= dataset_len:
+        new_mm = max(1, dataset_len - 1)
+        print(f"Warning: mm_num_samples ({mm_num_samples}) >= dataset size ({dataset_len}). Adjusting to {new_mm}.")
+        mm_num_samples = new_mm
+    # 2. 修正 diversity_times (必須小於等於 dataset_len)
+    if diversity_times >= dataset_len:
+        # 至少要比總數少 1，且最小不能低於 2 (否則計算無意義)
+        new_div = max(2, dataset_len - 1)
+        print(f"Warning: diversity_times ({diversity_times}) >= dataset_len ({dataset_len}). Adjusting to {new_div}.")
+        diversity_times = new_div
 
     num_actions = gen_loader.dataset.num_actions
 

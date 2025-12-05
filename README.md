@@ -148,6 +148,11 @@ cp dataset/AIST++/test_choose.txt dataset/AIST++/test.txt
 # 特定舞風 (例如 House)
 cp dataset/AIST++/test_house.txt dataset/AIST++/test.txt
 ```
+或以 `grep` 篩選特定舞風代碼：
+```bash
+# 從原始列表篩選包含 'gHO' (House) 的檔案名到 test.txt
+grep "gHO" dataset/AIST++/test_origin.txt > dataset/AIST++/test.txt
+```
 
 ---
 
@@ -211,6 +216,7 @@ python -m eval.eval_humanml \
 | `debug` | 快速測試 (5 replications) |
 | `wo_mm` | 不含 MultiModality (20 replications) |
 | `mm_short` | 含 MultiModality (5 replications) |
+| `full` | 含 MultiModality (20 replications) |
 
 > **⚠️ 評估指標說明**
 >
