@@ -158,6 +158,25 @@ cp dataset/AIST++/test_house.txt dataset/AIST++/test.txt
 grep "gHO" dataset/AIST++/test_origin.txt > dataset/AIST++/test.txt
 ```
 
+<details>
+<summary><b>展開查看各舞風及對應代碼：</b></summary>
+
+| Genres | Symbols |
+|-----------|------|
+| Break | gBR |
+| Pop | gPO |
+| Lock | gLO |
+| Middle Hip-hop | gMH |
+| LA style Hip-hop | gLH |
+| House | gHO |
+| Waack | gWA |
+| Krump | gKR |
+| Street Jazz | gJS |
+| Ballet Jazz | gJB |
+
+</details>
+
+
 ---
 
 ### 4-1. Edit (In-between)
@@ -204,7 +223,7 @@ python -m sample.generate \
 
 ### 4-3. Evaluation
 
-執行評估：
+執行原本 MDM 的 evaluation：
 
 ```bash
 python -m eval.eval_humanml \
@@ -214,7 +233,7 @@ python -m eval.eval_humanml \
     --data_dir ./dataset/AIST++ \
     --seed 42
 ```
-或執行修改自 Unimumo 的評估：
+或執行修改自 Unimumo 的 evaluation：
 ```bash
 python -m eval.eval_unimumo \ 
     --model_path save/aist_mdm_50steps/model000070000.pt \
@@ -223,6 +242,7 @@ python -m eval.eval_unimumo \
     --seed 42
 ```
 
+預設使用 HumanML3D 預訓練的 evaluator（`t2m/`）。以下為訓練模式選項：  
 | eval_mode | 說明 |
 |-----------|------|
 | `debug` | 快速測試 (5 replications) |
@@ -230,9 +250,22 @@ python -m eval.eval_unimumo \
 | `mm_short` | 含 MultiModality (5 replications) |
 | `full` | 含 MultiModality (20 replications) |
 
-> **⚠️ 評估指標說明**
->
-> 目前的評估使用 HumanML3D 預訓練的 evaluator（`t2m/`）
+以下為個舞風及對應 evaluation score 參考： ( GroundTruth / Generation )
+
+| Genres | FID | Div | Dist_g | Dist_k |
+|--------|-----|-----------|--------|--------|
+| Break | 0.66/9.41 | 3.03/3.13 | 42.46/29.08 | 6.73/4.40 |
+| Pop | 0.40/5.06 | 2.41/3.03 | 34.69/30.31 | 2.44/4.63 |
+| Lock | 0.54/2.96 | 2.83/3.42 | 29.34/30.36 | 3.76/4.63 |
+| Middle Hip-hop | 0.46/7.83 | 2.06/3.40 | 30.81/27.75 | 5.80/4.68 |
+| LA style Hip-hop | 0.32/2.34 | 2.16/2.92 | 28.83/28.36 | 4.32/4.82 |
+| House | 0.55/4.34 | 1.96/3.22 | 23.95/27.17 | 4.53/5.20 |
+| Waack | 0.48/4.35 | 3.10/3.08 | 45.47/28.47 | 4.04/4.59 |
+| Krump | 0.53/5.76 | 2.75/3.20 | 31.45/30.31 | 4.24/4.62 |
+| Street Jazz | 0.41/4.64 | 2.91/3.05 | 26.97/28.68 | 2.71/4.54 |
+| Ballet Jazz | 0.52/4.76 | 3.10/2.90 | **157.52**/28.64 | 8.28/4.85 |
+| **All** | 0.13/1.11 | 3.47/3.17 | 60.13/29.53 | 5.64/4.76 |
+| **All wo/ Ballet Jazz** | 0.13/1.00 | 3.35/3.21 | 34.75/29.95 | 4.77/4.76 |
 
 ---
 
